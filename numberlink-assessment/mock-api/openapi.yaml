@@ -1,0 +1,486 @@
+openapi: 3.0.3
+info:
+  title: Numberlink Take-Home Mock API
+  version: 1.0.0
+servers:
+  - url: http://localhost:4010
+    description: Docker Compose setup (Prism mock server)
+
+paths:
+  /levels:
+    get:
+      summary: List available levels
+      parameters:
+        - in: query
+          name: difficulty
+          schema:
+            $ref: "#/components/schemas/Difficulty"
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: List of levels
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelListResponse"
+              example:
+                levels:
+                  - levelId: "sha256:0a003a02256360a43ca231b084a85b4c85014edaddc59fdf0068f084236d3d3d"
+                    size: 5
+                    difficulty: "easy"
+                    pairCount: 3
+                    createdAt: "2026-02-25T10:30:00Z"
+                  - levelId: "sha256:7c4f...a2"
+                    size: 5
+                    difficulty: "medium"
+                    pairCount: 5
+                    createdAt: "2026-02-25T11:15:00Z"
+
+    post:
+      summary: Upload a new level
+      description: |
+        The server computes the levelId (checksum) from the `level` payload only.
+        The response returns the computed `levelId`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLevelRequest"
+            example:
+              level:
+                size: 5
+                difficulty: "easy"
+                pairs:
+                  - id: "A"
+                    color: "#e74c3c"
+                    start: { x: 0, y: 0 }
+                    end: { x: 4, y: 0 }
+                  - id: "B"
+                    color: "#3498db"
+                    start: { x: 0, y: 1 }
+                    end: { x: 4, y: 1 }
+                  - id: "C"
+                    color: "#2ecc71"
+                    start: { x: 0, y: 2 }
+                    end: { x: 4, y: 4 }
+              notes: "Simple 3-pair easy level for testing"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateLevelResponse"
+              example:
+                meta:
+                  levelId: "sha256:0a003a02256360a43ca231b084a85b4c85014edaddc59fdf0068f084236d3d3d"
+                  createdAt: "2026-02-25T10:30:00Z"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "bad_request"
+                  message: "Invalid level payload: pairs array must contain 2-8 items"
+        "409":
+          description: Level already exists (same checksum)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "conflict"
+                  message: "Level with this checksum already exists"
+
+  /levels/{levelId}:
+    get:
+      summary: Fetch a level by checksum ID
+      parameters:
+        - in: path
+          name: levelId
+          required: true
+          schema:
+            type: string
+          description: Checksum-derived level identifier
+      responses:
+        "200":
+          description: Level found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetLevelResponse"
+              example:
+                meta:
+                  levelId: "sha256:0a003a02256360a43ca231b084a85b4c85014edaddc59fdf0068f084236d3d3d"
+                  createdAt: "2026-02-25T10:30:00Z"
+                level:
+                  size: 5
+                  difficulty: "easy"
+                  pairs:
+                    - id: "A"
+                      color: "#e74c3c"
+                      start: { x: 0, y: 0 }
+                      end: { x: 4, y: 0 }
+                    - id: "B"
+                      color: "#3498db"
+                      start: { x: 0, y: 1 }
+                      end: { x: 4, y: 1 }
+                    - id: "C"
+                      color: "#2ecc71"
+                      start: { x: 0, y: 2 }
+                      end: { x: 4, y: 4 }
+                solution:
+                  paths:
+                    A:
+                      - { x: 0, y: 0 }
+                      - { x: 1, y: 0 }
+                      - { x: 2, y: 0 }
+                      - { x: 3, y: 0 }
+                      - { x: 4, y: 0 }
+                    B:
+                      - { x: 0, y: 1 }
+                      - { x: 1, y: 1 }
+                      - { x: 2, y: 1 }
+                      - { x: 3, y: 1 }
+                      - { x: 4, y: 1 }
+                    C:
+                      - { x: 0, y: 2 }
+                      - { x: 1, y: 2 }
+                      - { x: 2, y: 2 }
+                      - { x: 3, y: 2 }
+                      - { x: 4, y: 2 }
+                      - { x: 4, y: 3 }
+                      - { x: 4, y: 4 }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "not_found"
+                  message: "Level not found"
+
+  /scores:
+    get:
+      summary: Fetch scoreboard entries
+      parameters:
+        - in: query
+          name: levelId
+          schema:
+            type: string
+          description: If provided, return scores only for the given level
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - in: query
+          name: order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+          description: Sort by durationMs (asc = fastest first)
+      responses:
+        "200":
+          description: Scoreboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoreboardResponse"
+              example:
+                scores:
+                  - scoreId: "score_abc123"
+                    levelId: "sha256:0a003a02256360a43ca231b084a85b4c85014edaddc59fdf0068f084236d3d3d"
+                    durationMs: 45230
+                    moves: 12
+                    playerName: "speedrunner42"
+                    createdAt: "2026-02-25T12:00:00Z"
+                  - scoreId: "score_def456"
+                    levelId: "sha256:0a003a02256360a43ca231b084a85b4c85014edaddc59fdf0068f084236d3d3d"
+                    durationMs: 52100
+                    moves: 15
+                    playerName: "puzzlemaster"
+                    createdAt: "2026-02-25T12:15:00Z"
+
+    post:
+      summary: Submit a completion time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScoreRequest"
+            example:
+              levelId: "sha256:0a003a02256360a43ca231b084a85b4c85014edaddc59fdf0068f084236d3d3d"
+              durationMs: 45230
+              moves: 12
+              playerName: "speedrunner42"
+      responses:
+        "201":
+          description: Score submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateScoreResponse"
+              example:
+                score:
+                  scoreId: "score_abc123"
+                  levelId: "sha256:0a003a02256360a43ca231b084a85b4c85014edaddc59fdf0068f084236d3d3d"
+                  durationMs: 45230
+                  moves: 12
+                  playerName: "speedrunner42"
+                  createdAt: "2026-02-25T12:00:00Z"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "bad_request"
+                  message: "Invalid score payload: durationMs must be a non-negative integer"
+        "404":
+          description: Level not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "not_found"
+                  message: "Level not found"
+
+components:
+  schemas:
+    Difficulty:
+      type: string
+      enum: [easy, medium, hard]
+
+    Cell:
+      type: object
+      additionalProperties: false
+      required: [x, y]
+      properties:
+        x:
+          type: integer
+          minimum: 0
+          maximum: 4
+        y:
+          type: integer
+          minimum: 0
+          maximum: 4
+
+    Pair:
+      type: object
+      additionalProperties: false
+      required: [id, color, start, end]
+      properties:
+        id:
+          type: string
+          description: Stable identifier used to key solution paths (e.g., "A", "B")
+          minLength: 1
+          maxLength: 10
+        color:
+          type: string
+          description: Hex color string
+          example: "#e74c3c"
+        start:
+          $ref: "#/components/schemas/Cell"
+        end:
+          $ref: "#/components/schemas/Cell"
+
+    Level:
+      type: object
+      additionalProperties: false
+      required: [size, difficulty, pairs]
+      properties:
+        size:
+          type: integer
+          enum: [5]
+          description: Grid size (fixed at 5 for this assessment)
+        difficulty:
+          $ref: "#/components/schemas/Difficulty"
+        pairs:
+          type: array
+          minItems: 2
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/Pair"
+
+    Solution:
+      type: object
+      additionalProperties: false
+      required: [paths]
+      properties:
+        paths:
+          type: object
+          description: Mapping of pairId -> ordered list of cells (including endpoints)
+          additionalProperties:
+            type: array
+            minItems: 2
+            items:
+              $ref: "#/components/schemas/Cell"
+
+    LevelMeta:
+      type: object
+      additionalProperties: false
+      required: [levelId, createdAt]
+      properties:
+        levelId:
+          type: string
+          description: Checksum-derived identifier computed from the level payload only
+          example: "sha256:0a003a02256360a43ca231b084a85b4c85014edaddc59fdf0068f084236d3d3d"
+        createdAt:
+          type: string
+          format: date-time
+
+    LevelListItem:
+      type: object
+      additionalProperties: false
+      required: [levelId, size, difficulty, pairCount, createdAt]
+      properties:
+        levelId:
+          type: string
+        size:
+          type: integer
+          enum: [5]
+        difficulty:
+          $ref: "#/components/schemas/Difficulty"
+        pairCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    LevelListResponse:
+      type: object
+      additionalProperties: false
+      required: [levels]
+      properties:
+        levels:
+          type: array
+          items:
+            $ref: "#/components/schemas/LevelListItem"
+
+    CreateLevelRequest:
+      type: object
+      additionalProperties: false
+      required: [level]
+      properties:
+        level:
+          $ref: "#/components/schemas/Level"
+        notes:
+          type: string
+          description: Optional freeform notes (e.g., generator seed/debug info)
+
+    CreateLevelResponse:
+      type: object
+      additionalProperties: false
+      required: [meta]
+      properties:
+        meta:
+          $ref: "#/components/schemas/LevelMeta"
+
+    GetLevelResponse:
+      type: object
+      additionalProperties: false
+      required: [meta, level]
+      properties:
+        meta:
+          $ref: "#/components/schemas/LevelMeta"
+        level:
+          $ref: "#/components/schemas/Level"
+        solution:
+          $ref: "#/components/schemas/Solution"
+          description: May be omitted if the server does not provide solutions
+
+    CreateScoreRequest:
+      type: object
+      additionalProperties: false
+      required: [levelId, durationMs]
+      properties:
+        levelId:
+          type: string
+        durationMs:
+          type: integer
+          minimum: 0
+          description: Elapsed time to solve the level in milliseconds
+        moves:
+          type: integer
+          minimum: 0
+          description: Optional move count if tracked
+        playerName:
+          type: string
+          description: Optional display name for scoreboard
+          maxLength: 32
+
+    ScoreEntry:
+      type: object
+      additionalProperties: false
+      required: [scoreId, levelId, durationMs, createdAt]
+      properties:
+        scoreId:
+          type: string
+        levelId:
+          type: string
+        durationMs:
+          type: integer
+        moves:
+          type: integer
+        playerName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateScoreResponse:
+      type: object
+      additionalProperties: false
+      required: [score]
+      properties:
+        score:
+          $ref: "#/components/schemas/ScoreEntry"
+
+    ScoreboardResponse:
+      type: object
+      additionalProperties: false
+      required: [scores]
+      properties:
+        scores:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScoreEntry"
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: "bad_request"
+            message:
+              type: string
+              example: "Invalid level payload"

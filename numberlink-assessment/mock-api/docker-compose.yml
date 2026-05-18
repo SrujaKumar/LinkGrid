@@ -1,0 +1,40 @@
+services:
+  prism:
+    image: stoplight/prism:latest
+    container_name: numberlink-prism
+    command: mock -h 0.0.0.0 /api/openapi.yaml
+    volumes:
+      - ./openapi.yaml:/api/openapi.yaml:ro
+    networks:
+      - numberlink-network
+    restart: unless-stopped
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: numberlink-swagger
+    environment:
+      - SWAGGER_JSON=/api/openapi.yaml
+      - BASE_URL=/docs
+    volumes:
+      - ./openapi.yaml:/api/openapi.yaml:ro
+    networks:
+      - numberlink-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: numberlink-nginx
+    ports:
+      - "4010:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - prism
+      - swagger-ui
+    networks:
+      - numberlink-network
+    restart: unless-stopped
+
+networks:
+  numberlink-network:
+    driver: bridge
